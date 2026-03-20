@@ -21,6 +21,8 @@ pub fn handle_event(state: &mut AppState) -> Result<Option<Message>, Box<dyn std
                 }
                 KeyCode::Char('j') => Message::MoveDown,
                 KeyCode::Char('k') => Message::MoveUp,
+                KeyCode::Char('h') => Message::GoBackFromDirectory,
+                KeyCode::Char('l') => Message::EnterDirectory,
                 _ => return Ok(None),
             }));
         }
