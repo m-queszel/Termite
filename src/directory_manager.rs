@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 pub fn find_steam_root() -> Option<PathBuf> {
@@ -32,7 +33,7 @@ pub fn list_steam_games(steam_root: PathBuf) -> Vec<String> {
     }
 }
 
-pub fn list_directory_contents(dir: PathBuf) -> Vec<String> {
+pub fn list_directory_contents(dir: &Path) -> Vec<String> {
     match fs::read_dir(dir) {
         Ok(entries) => entries
             .filter_map(|res| res.ok())

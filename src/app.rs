@@ -11,12 +11,15 @@ pub enum Message {
     OpenDialog,
     CloseDialog,
     SelectPath(PathBuf),
+    EnterDirectory,
+    GoBackFromDirectory,
 }
 
 pub struct ExplorerState {
     pub path: PathBuf,
     pub items: Vec<String>,
     pub list_state: ListState,
+    pub history: Vec<usize>,
 }
 
 pub struct AppState {
@@ -41,19 +44,43 @@ impl AppState {
         match msg {
             Message::OpenDialog => {
                 if let Some(path) = home::home_dir() {
-                    let items = directory_manager::list_directory_contents(path.clone());
+                    let items = directory_manager::list_directory_contents(&path);
                     let mut list_state = ListState::default();
                     list_state.select(Some(0));
                     self.explorer = Some(ExplorerState {
                         path,
                         items,
                         list_state,
+                        history: Vec::new(),
                     });
+                }
+            }
+            Message::EnterDirectory => {
+                if let Some(explorer) = &mut self.explorer {
+                    let index = explorer.list_state.selected().unwrap_or(0);
+                    let directory_name = &explorer.items[index];
+                    let new_path = explorer.path.join(directory_name);
+                    if new_path.is_dir() {
+                        explorer.history.push(index);
+                        explorer.path = new_path;
+                        explorer.items = directory_manager::list_directory_contents(&explorer.path);
+                        explorer.list_state.select(Some(0));
+                    }
+                }
+            }
+            Message::GoBackFromDirectory => {
+                if let Some(explorer) = &mut self.explorer
+                    && let Some(parent_path) =
+                        explorer.path.parent().map(|parent| parent.to_path_buf())
+                {
+                    explorer.path = parent_path;
+                    explorer.items = directory_manager::list_directory_contents(&explorer.path);
+                    explorer.list_state.select(explorer.history.pop());
                 }
             }
             Message::CloseDialog => self.explorer = None,
             Message::SelectPath(path) => {
-                self.game_items = directory_manager::list_directory_contents(path);
+                self.game_items = directory_manager::list_directory_contents(&path);
                 self.explorer = None;
             }
             Message::MoveUp => self.move_up(),
