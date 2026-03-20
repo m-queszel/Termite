@@ -26,11 +26,19 @@ pub fn handle_event(state: &mut AppState) -> Result<Option<Message>, Box<dyn std
                 _ => return Ok(None),
             }));
         }
+
+        if state.active_game_index.is_some() {
+            match key.code {
+                KeyCode::Char('m') => return Ok(Some(Message::OpenModDialog)),
+                _ => {}
+            }
+        }
         return Ok(Some(match key.code {
             KeyCode::Char('q') => Message::Quit,
             KeyCode::Char('j') => Message::MoveDown,
             KeyCode::Char('k') => Message::MoveUp,
             KeyCode::Char('d') => Message::OpenDialog,
+            KeyCode::Enter => Message::ModGame,
             _ => return Ok(None),
         }));
     }

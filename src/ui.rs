@@ -13,9 +13,9 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
         .split(area);
 
     let game_list_items: Vec<ListItem> = state
-        .get_game_items()
+        .get_games()
         .iter()
-        .map(|item| ListItem::new(item.clone()))
+        .map(|game| ListItem::new(game.name.clone()))
         .collect();
 
     let game_list = List::new(game_list_items)
@@ -25,10 +25,29 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
 
     frame.render_stateful_widget(game_list, chunks[0], state.get_game_list_state());
 
-    frame.render_widget(
-        Paragraph::new("Right View Widget").block(Block::bordered()),
-        chunks[1],
-    );
+    match state.active_game_index {
+        Some(index) => {
+            if let Some(game) = state.games.get(index) {
+                let mod_info = match &game.mods_path {
+                    Some(path) => {
+                        format!("Linked Mod Folder: {:?}\n\n[Mods List Placeholder]", path)
+                    }
+                    None => {
+                        "No mods folder linked.\n\nPress 'm' to link a mod folder for this game."
+                            .to_string()
+                    }
+                };
+                let mod_view = Paragraph::new(mod_info)
+                    .block(Block::bordered().title(format!(" Managing Mods: {} ", game.name)));
+                frame.render_widget(mod_view, chunks[1]);
+            }
+        }
+        None => {
+            let help_text = Paragraph::new("Welcome to Termite!\n\nSelect a game on the left and press <Enter> to manage mods.")
+                .block(Block::bordered().title(" Info "));
+            frame.render_widget(help_text, chunks[1]);
+        }
+    }
 
     if let Some(explorer) = &mut state.explorer {
         let popup_area = area.inner(Margin {

@@ -1,3 +1,4 @@
+use crate::models::game::Game;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -19,15 +20,21 @@ pub fn find_steam_root() -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-pub fn list_steam_games(steam_root: PathBuf) -> Vec<String> {
+pub fn list_steam_games(steam_root: PathBuf) -> Vec<Game> {
     let common_path = steam_root.join("steamapps").join("common");
-    match fs::read_dir(common_path) {
+    match fs::read_dir(&common_path) {
         Ok(entries) => entries
             .filter_map(|res| res.ok())
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .filter_map(|p| p.file_name()?.to_str()?.to_owned().into())
-            .filter(|name| !name.contains("Proton") && !name.contains("Steam"))
+            .filter_map(|e| {
+                let path = e.path();
+                let name = path.file_name()?.to_str()?.to_owned();
+                Some(Game {
+                    name,
+                    path,
+                    mods_path: None,
+                })
+            })
+            .filter(|game| !game.name.contains("Proton") && !game.name.contains("Steam"))
             .collect(),
         Err(_) => vec![],
     }
