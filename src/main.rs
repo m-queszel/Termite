@@ -7,6 +7,7 @@ use std::error::Error;
 use std::io;
 
 mod app;
+mod directory_manager;
 mod event;
 mod ui;
 
@@ -28,22 +29,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut state = AppState::new(vec![
-        "Item 1".to_string(),
-        "Item 2".to_string(),
-        "Item 3".to_string(),
-        "Item 4".to_string(),
-        "Item 5".to_string(),
-    ]);
+    let steam_root = directory_manager::find_steam_root();
+    let steam_games = match steam_root {
+        Some(path) => directory_manager::list_steam_games(path),
+        None => vec![],
+    };
 
-    // For listing out steam games, use:
-    //ls -1 /home/mentat/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/ | grep -v -E "(Proton|Steam)"
-    //set initial state to item 1
+    let mut state = AppState::new(steam_games);
 
     loop {
         terminal.draw(|frame| ui::view(frame, &mut state))?;
 
-        if let Some(msg) = event::handle_event()? {
+        if let Some(msg) = event::handle_event(&mut state)? {
             if matches!(msg, Message::Quit) {
                 break;
             }
