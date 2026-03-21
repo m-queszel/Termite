@@ -1,4 +1,4 @@
-use crate::app::AppState;
+use crate::app::{AppState, PaneFocus};
 use ratatui::{
     prelude::*,
     widgets::{Block, Clear, List, ListItem, Paragraph},
@@ -6,6 +6,20 @@ use ratatui::{
 
 pub fn view(frame: &mut Frame, state: &mut AppState) {
     let area = frame.area();
+    let active_style = Style::default().fg(Color::Yellow);
+    let inactive_style = Style::default().fg(Color::Gray);
+
+    let left_border = if matches!(state.focus, PaneFocus::GameList) {
+        active_style
+    } else {
+        inactive_style
+    };
+
+    let right_border = if matches!(state.focus, PaneFocus::ModList) {
+        active_style
+    } else {
+        inactive_style
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -19,7 +33,7 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
         .collect();
 
     let game_list = List::new(game_list_items)
-        .block(Block::bordered().title("Games"))
+        .block(Block::bordered().title("Games").border_style(left_border))
         .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
         .highlight_symbol("> ");
 
@@ -28,18 +42,42 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
     match state.active_game_index {
         Some(index) => {
             if let Some(game) = state.games.get(index) {
-                let mod_info = match &game.mods_path {
-                    Some(path) => {
-                        format!("Linked Mod Folder: {:?}\n\n[Mods List Placeholder]", path)
+                match &game.mods_path {
+                    Some(_path) => {
+                        let mod_items: Vec<ListItem> = game
+                            .mods
+                            .iter()
+                            .map(|m| {
+                                let color = if m.enabled {
+                                    Color::Green
+                                } else {
+                                    Color::White
+                                };
+                                ListItem::new(m.name.clone()).style(Style::default().fg(color))
+                            })
+                            .collect();
+
+                        let mod_list = List::new(mod_items)
+                            .block(
+                                Block::bordered()
+                                    .title(format!(" Managing Mods: {} ", game.name))
+                                    .border_style(right_border),
+                            )
+                            .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
+                            .highlight_symbol("> ");
+                        frame.render_stateful_widget(
+                            mod_list,
+                            chunks[1],
+                            &mut state.mod_list_state,
+                        );
                     }
                     None => {
-                        "No mods folder linked.\n\nPress 'm' to link a mod folder for this game."
-                            .to_string()
+                        let prompt = Paragraph::new("\nNo mod folder is linked for this game.\n\nPress <m> to link a directory")
+                            .alignment(Alignment::Center)
+                            .block(Block::bordered().title(format!(" Managing Mods: {} ", game.name)).border_style(right_border));
+                        frame.render_widget(prompt, chunks[1])
                     }
-                };
-                let mod_view = Paragraph::new(mod_info)
-                    .block(Block::bordered().title(format!(" Managing Mods: {} ", game.name)));
-                frame.render_widget(mod_view, chunks[1]);
+                }
             }
         }
         None => {

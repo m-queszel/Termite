@@ -32,6 +32,7 @@ pub fn list_steam_games(steam_root: PathBuf) -> Vec<Game> {
                     name,
                     path,
                     mods_path: None,
+                    mods: Vec::new(),
                 })
             })
             .filter(|game| !game.name.contains("Proton") && !game.name.contains("Steam"))

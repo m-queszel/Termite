@@ -3,9 +3,11 @@ use std::path::PathBuf;
 use ratatui::widgets::ListState;
 
 use crate::directory_manager;
-use crate::models::game::Game;
+use crate::models::game::{Game, Mod};
 
 pub enum Message {
+    ToggleFocus,
+    ToggleMod,
     MoveUp,
     MoveDown,
     Quit,
@@ -23,6 +25,11 @@ pub enum ExplorerPurpose {
     SelectModFolder,
 }
 
+pub enum PaneFocus {
+    GameList,
+    ModList,
+}
+
 pub struct ExplorerState {
     pub path: PathBuf,
     pub items: Vec<String>,
@@ -34,8 +41,10 @@ pub struct ExplorerState {
 pub struct AppState {
     pub games: Vec<Game>,
     pub game_list_state: ListState,
+    pub mod_list_state: ListState,
     pub explorer: Option<ExplorerState>,
     pub active_game_index: Option<usize>,
+    pub focus: PaneFocus,
 }
 
 impl AppState {
@@ -45,9 +54,11 @@ impl AppState {
 
         AppState {
             game_list_state,
+            mod_list_state: ListState::default(),
             games,
             explorer: None,
             active_game_index: None,
+            focus: PaneFocus::GameList,
         }
     }
 
@@ -84,6 +95,10 @@ impl AppState {
             }
             Message::ModGame => {
                 self.active_game_index = self.game_list_state.selected();
+                if self.active_game_index.is_some() {
+                    self.focus = PaneFocus::ModList;
+                    self.mod_list_state.select(Some(0));
+                }
             }
             Message::CloseDialog => self.explorer = None,
             Message::SelectPath(path) => {
@@ -99,6 +114,7 @@ impl AppState {
                                         name,
                                         path: full_path,
                                         mods_path: None,
+                                        mods: Vec::new(),
                                     }
                                 })
                                 .collect();
@@ -109,12 +125,46 @@ impl AppState {
                                 && let Some(game) = self.games.get_mut(index)
                             {
                                 {
-                                    game.mods_path = Some(path);
+                                    game.mods_path = Some(path.clone());
+                                    let mod_names =
+                                        directory_manager::list_directory_contents(&path);
+                                    game.mods = mod_names
+                                        .into_iter()
+                                        .map(|name| {
+                                            let full_path = path.join(&name);
+                                            Mod {
+                                                name,
+                                                path: full_path,
+                                                enabled: false,
+                                            }
+                                        })
+                                        .collect()
                                 }
                             }
                             self.explorer = None;
                         }
                     }
+                }
+            }
+            Message::ToggleFocus => {
+                self.focus = match self.focus {
+                    PaneFocus::GameList => PaneFocus::ModList,
+                    PaneFocus::ModList => PaneFocus::GameList,
+                };
+                if matches!(self.focus, PaneFocus::ModList)
+                    && self.mod_list_state.selected().is_none()
+                {
+                    self.mod_list_state.select(Some(0));
+                }
+            }
+            Message::ToggleMod => {
+                if let Some(game) = self.active_game_index.and_then(|i| self.games.get_mut(i))
+                    && let Some(m) = self
+                        .mod_list_state
+                        .selected()
+                        .and_then(|i| game.mods.get_mut(i))
+                {
+                    m.enabled = !m.enabled;
                 }
             }
             Message::MoveUp => self.move_up(),
@@ -126,13 +176,28 @@ impl AppState {
     pub fn move_down(&mut self) {
         if let Some(explorer) = &mut self.explorer {
             let i = explorer.list_state.selected().unwrap_or(0);
-            if i < explorer.items.len() - 1 {
+            if i < explorer.items.len().saturating_sub(1) {
                 explorer.list_state.select(Some(i + 1));
             }
         } else {
-            let i = self.game_list_state.selected().unwrap_or(0);
-            if i < self.games.len() - 1 {
-                self.game_list_state.select(Some(i + 1));
+            match self.focus {
+                PaneFocus::GameList => {
+                    let i = self.game_list_state.selected().unwrap_or(0);
+                    if i < self.games.len().saturating_sub(1) {
+                        self.game_list_state.select(Some(i + 1));
+                    }
+                }
+                PaneFocus::ModList => {
+                    if let Some(game) = self
+                        .active_game_index
+                        .and_then(|index| self.games.get(index))
+                    {
+                        let i = self.mod_list_state.selected().unwrap_or(0);
+                        if i < game.mods.len().saturating_sub(1) {
+                            self.mod_list_state.select(Some(i + 1));
+                        }
+                    }
+                }
             }
         }
     }
@@ -144,9 +209,19 @@ impl AppState {
                 explorer.list_state.select(Some(i - 1));
             }
         } else {
-            let i = self.game_list_state.selected().unwrap_or(0);
-            if i > 0 {
-                self.game_list_state.select(Some(i - 1));
+            match self.focus {
+                PaneFocus::GameList => {
+                    let i = self.game_list_state.selected().unwrap_or(0);
+                    if i > 0 {
+                        self.game_list_state.select(Some(i - 1));
+                    }
+                }
+                PaneFocus::ModList => {
+                    let i = self.mod_list_state.selected().unwrap_or(0);
+                    if i > 0 {
+                        self.mod_list_state.select(Some(i - 1));
+                    }
+                }
             }
         }
     }

@@ -39,6 +39,8 @@ pub fn handle_event(state: &mut AppState) -> Result<Option<Message>, Box<dyn std
             KeyCode::Char('k') => Message::MoveUp,
             KeyCode::Char('d') => Message::OpenDialog,
             KeyCode::Enter => Message::ModGame,
+            KeyCode::Tab => Message::ToggleFocus,
+            KeyCode::Char(' ') => Message::ToggleMod,
             _ => return Ok(None),
         }));
     }
