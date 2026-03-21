@@ -10,6 +10,9 @@ mod app;
 mod directory_manager;
 mod event;
 mod ui;
+mod models {
+    pub mod game;
+}
 
 use crate::app::{AppState, Message};
 
