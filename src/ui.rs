@@ -9,6 +9,16 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
     let active_style = Style::default().fg(Color::Yellow);
     let inactive_style = Style::default().fg(Color::Gray);
 
+    let main_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(area);
+
+    let body_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(main_layout[0]);
+
     let left_border = if matches!(state.focus, PaneFocus::GameList) {
         active_style
     } else {
@@ -21,11 +31,6 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
         inactive_style
     };
 
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(area);
-
     let game_list_items: Vec<ListItem> = state
         .get_games()
         .iter()
@@ -37,7 +42,14 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
         .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
         .highlight_symbol("> ");
 
-    frame.render_stateful_widget(game_list, chunks[0], state.get_game_list_state());
+    frame.render_stateful_widget(game_list, body_chunks[0], state.get_game_list_state());
+
+    let status_text = state.status_message.as_deref().unwrap_or("Ready");
+    let status_bar = Paragraph::new(status_text)
+        .style(Style::default().fg(Color::Cyan))
+        .alignment(Alignment::Left);
+
+    frame.render_widget(status_bar, main_layout[1]);
 
     match state.active_game_index {
         Some(index) => {
@@ -67,7 +79,7 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
                             .highlight_symbol("> ");
                         frame.render_stateful_widget(
                             mod_list,
-                            chunks[1],
+                            body_chunks[1],
                             &mut state.mod_list_state,
                         );
                     }
@@ -75,7 +87,7 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
                         let prompt = Paragraph::new("\nNo mod folder is linked for this game.\n\nPress <m> to link a directory")
                             .alignment(Alignment::Center)
                             .block(Block::bordered().title(format!(" Managing Mods: {} ", game.name)).border_style(right_border));
-                        frame.render_widget(prompt, chunks[1])
+                        frame.render_widget(prompt, body_chunks[1])
                     }
                 }
             }
@@ -83,7 +95,7 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
         None => {
             let help_text = Paragraph::new("Welcome to Termite!\n\nSelect a game on the left and press <Enter> to manage mods.")
                 .block(Block::bordered().title(" Info "));
-            frame.render_widget(help_text, chunks[1]);
+            frame.render_widget(help_text, body_chunks[1]);
         }
     }
 

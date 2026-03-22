@@ -7,8 +7,10 @@ use std::error::Error;
 use std::io;
 
 mod app;
+mod config;
 mod directory_manager;
 mod event;
+mod symlink_manager;
 mod ui;
 mod models {
     pub mod game;
@@ -32,13 +34,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let steam_root = directory_manager::find_steam_root();
-    let steam_games = match steam_root {
+    let games = config::load().unwrap_or_else(|| match directory_manager::find_steam_root() {
         Some(path) => directory_manager::list_steam_games(path),
         None => vec![],
-    };
+    });
 
-    let mut state = AppState::new(steam_games);
+    let mut state = AppState::new(games);
 
     loop {
         terminal.draw(|frame| ui::view(frame, &mut state))?;

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-#[derive(Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Game {
     pub name: String,
     pub path: PathBuf,
@@ -8,9 +10,17 @@ pub struct Game {
     pub mods: Vec<Mod>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Mod {
     pub name: String,
     pub path: PathBuf,
     pub enabled: bool,
+    pub injection_method: InjectionStrategy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InjectionStrategy {
+    MergeFiles,
+    AddAsFolder(PathBuf),
+    TargetSubfolder,
 }
