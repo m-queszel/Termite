@@ -2,8 +2,11 @@ use std::path::PathBuf;
 
 use ratatui::widgets::ListState;
 
+use crate::config;
 use crate::directory_manager;
+use crate::models::game::InjectionStrategy;
 use crate::models::game::{Game, Mod};
+use crate::symlink_manager;
 
 pub enum Message {
     ToggleFocus,
@@ -44,6 +47,7 @@ pub struct AppState {
     pub mod_list_state: ListState,
     pub explorer: Option<ExplorerState>,
     pub active_game_index: Option<usize>,
+    pub status_message: Option<String>,
     pub focus: PaneFocus,
 }
 
@@ -59,6 +63,7 @@ impl AppState {
             explorer: None,
             active_game_index: None,
             focus: PaneFocus::GameList,
+            status_message: Some("Welcome to Termite!".to_string()),
         }
     }
 
@@ -101,7 +106,7 @@ impl AppState {
                 }
             }
             Message::CloseDialog => self.explorer = None,
-            Message::SelectPath(path) => {
+            Message::SelectPath(ref path) => {
                 if let Some(explorer) = &self.explorer {
                     match explorer.purpose {
                         ExplorerPurpose::SelectGameLibrary => {
@@ -127,15 +132,17 @@ impl AppState {
                                 {
                                     game.mods_path = Some(path.clone());
                                     let mod_names =
-                                        directory_manager::list_directory_contents(&path);
+                                        directory_manager::list_directory_contents(path);
                                     game.mods = mod_names
                                         .into_iter()
+                                        .filter(|name| path.join(name).is_dir())
                                         .map(|name| {
                                             let full_path = path.join(&name);
                                             Mod {
                                                 name,
                                                 path: full_path,
                                                 enabled: false,
+                                                injection_method: InjectionStrategy::MergeFiles,
                                             }
                                         })
                                         .collect()
@@ -158,18 +165,44 @@ impl AppState {
                 }
             }
             Message::ToggleMod => {
-                if let Some(game) = self.active_game_index.and_then(|i| self.games.get_mut(i))
-                    && let Some(m) = self
-                        .mod_list_state
-                        .selected()
-                        .and_then(|i| game.mods.get_mut(i))
+                if let Some(game_index) = self.active_game_index
+                    && let Some(mod_index) = self.mod_list_state.selected()
                 {
+                    let game = &mut self.games[game_index];
+                    let m = &mut game.mods[mod_index];
                     m.enabled = !m.enabled;
+                    let is_enabled = m.enabled;
+                    let mod_name = m.name.clone();
+
+                    if is_enabled {
+                        match symlink_manager::apply_mod(game, mod_index) {
+                            Ok(_) => {
+                                self.status_message =
+                                    Some(format!("Successfully applied mod: {}", mod_name))
+                            }
+                            Err(e) => {
+                                self.status_message = Some(format!("Error applying mod: {}", e))
+                            }
+                        }
+                    } else {
+                        match symlink_manager::remove_mod(game, mod_index) {
+                            Ok(_) => {
+                                self.status_message =
+                                    Some(format!("Successfully removed mod: {}", mod_name))
+                            }
+                            Err(e) => {
+                                self.status_message = Some(format!("Error removing mod: {}", e))
+                            }
+                        }
+                    }
                 }
             }
             Message::MoveUp => self.move_up(),
             Message::MoveDown => self.move_down(),
             Message::Quit => {}
+        }
+        if self.should_save(&msg) {
+            let _ = config::save(&self.games);
         }
     }
 
@@ -239,6 +272,13 @@ impl AppState {
             history: Vec::new(),
             purpose,
         })
+    }
+
+    fn should_save(&self, msg: &Message) -> bool {
+        match msg {
+            Message::ToggleMod | Message::SelectPath(_) => true,
+            _ => false,
+        }
     }
 
     pub fn get_games(&self) -> &Vec<Game> {
