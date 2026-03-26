@@ -6,6 +6,14 @@ pub fn handle_event(state: &mut AppState) -> Result<Option<Message>, Box<dyn std
     if event::poll(std::time::Duration::from_millis(16))?
         && let Event::Key(key) = event::read()?
     {
+        if state.show_permission_prompt {
+            return Ok(Some(match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => Message::ConfirmPermission,
+                KeyCode::Char('n') | KeyCode::Char('N') => Message::CancelPermission,
+                _ => return Ok(None),
+            }));
+        }
+
         if state.explorer.is_some() {
             return Ok(Some(match key.code {
                 KeyCode::Esc => Message::CloseDialog,
@@ -23,6 +31,13 @@ pub fn handle_event(state: &mut AppState) -> Result<Option<Message>, Box<dyn std
                 KeyCode::Char('k') => Message::MoveUp,
                 KeyCode::Char('h') => Message::GoBackFromDirectory,
                 KeyCode::Char('l') => Message::EnterDirectory,
+                KeyCode::Char('s') => {
+                    if let Some(explorer) = &state.explorer {
+                        Message::SelectPath(explorer.path.clone())
+                    } else {
+                        Message::CloseDialog
+                    }
+                }
                 _ => return Ok(None),
             }));
         }
@@ -30,6 +45,7 @@ pub fn handle_event(state: &mut AppState) -> Result<Option<Message>, Box<dyn std
         if state.active_game_index.is_some() {
             match key.code {
                 KeyCode::Char('m') => return Ok(Some(Message::OpenModDialog)),
+                KeyCode::Char('i') => return Ok(Some(Message::OpenInjectionDialog)),
                 _ => {}
             }
         }

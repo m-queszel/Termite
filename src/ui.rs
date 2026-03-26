@@ -1,7 +1,7 @@
 use crate::app::{AppState, PaneFocus};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Clear, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
 pub fn view(frame: &mut Frame, state: &mut AppState) {
@@ -124,4 +124,44 @@ pub fn view(frame: &mut Frame, state: &mut AppState) {
 
         frame.render_stateful_widget(explorer_list, popup_area, &mut explorer.list_state);
     }
+
+    if state.show_permission_prompt {
+        let area = centered_rect(60, 20, frame.area());
+        frame.render_widget(Clear, area);
+        let block = Block::default()
+            .title(" Flatpak Permission ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .bg(Color::Black);
+        let text = Paragraph::new("Grant Flatpak permission for this mod folder? (y/n)")
+            .block(block)
+            .alignment(Alignment::Center);
+        frame.render_widget(text, area);
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }

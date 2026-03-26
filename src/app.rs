@@ -21,11 +21,15 @@ pub enum Message {
     EnterDirectory,
     GoBackFromDirectory,
     ModGame,
+    OpenInjectionDialog,
+    ConfirmPermission,
+    CancelPermission,
 }
 
 pub enum ExplorerPurpose {
     SelectGameLibrary,
     SelectModFolder,
+    SelectInjectionPath,
 }
 
 pub enum PaneFocus {
@@ -49,6 +53,8 @@ pub struct AppState {
     pub active_game_index: Option<usize>,
     pub status_message: Option<String>,
     pub focus: PaneFocus,
+    pub pending_permission_path: Option<PathBuf>,
+    pub show_permission_prompt: bool,
 }
 
 impl AppState {
@@ -64,11 +70,16 @@ impl AppState {
             active_game_index: None,
             focus: PaneFocus::GameList,
             status_message: Some("Welcome to Termite!".to_string()),
+            pending_permission_path: None,
+            show_permission_prompt: false,
         }
     }
 
     pub fn update(&mut self, msg: Message) {
         match msg {
+            Message::OpenInjectionDialog => {
+                self.explorer = self.create_explorer(ExplorerPurpose::SelectInjectionPath)
+            }
             Message::OpenDialog => {
                 self.explorer = self.create_explorer(ExplorerPurpose::SelectGameLibrary)
             }
@@ -87,6 +98,22 @@ impl AppState {
                         explorer.list_state.select(Some(0));
                     }
                 }
+            }
+            Message::ConfirmPermission => {
+                if let Some(path) = self.pending_permission_path.take() {
+                    match directory_manager::grant_flatpak_permission(&path) {
+                        Ok(_) => {
+                            self.status_message = Some("Flatpak permission granted!".to_string())
+                        }
+                        Err(e) => self.status_message = Some(format!("Permission error: {}", e)),
+                    }
+                }
+                self.show_permission_prompt = false;
+            }
+            Message::CancelPermission => {
+                self.pending_permission_path = None;
+                self.show_permission_prompt = false;
+                self.status_message = Some("Permission denied. Mods may not work.".to_string());
             }
             Message::GoBackFromDirectory => {
                 if let Some(explorer) = &mut self.explorer
@@ -109,16 +136,44 @@ impl AppState {
             Message::SelectPath(ref path) => {
                 if let Some(explorer) = &self.explorer {
                     match explorer.purpose {
+                        ExplorerPurpose::SelectInjectionPath => {
+                            if let Some(index) = self.active_game_index
+                                && let Some(game) = self.games.get_mut(index)
+                            {
+                                game.mods_path = Some(path.clone());
+                                self.status_message = Some(format!(
+                                    "Mods folder set to: {:?}",
+                                    path.file_name().unwrap_or_default()
+                                ));
+                            }
+                            self.explorer = None;
+                        }
                         ExplorerPurpose::SelectGameLibrary => {
-                            let folder_names = directory_manager::list_directory_contents(&path);
+                            let folder_names = directory_manager::list_directory_contents(path);
                             self.games = folder_names
                                 .into_iter()
                                 .map(|name| {
                                     let full_path = path.join(&name);
+
+                                    // Auto-discovery of mods folder
+                                    let mut mods_path = None;
+                                    let potential_mods = full_path.join("Mods");
+                                    if potential_mods.exists() && potential_mods.is_dir() {
+                                        mods_path = Some(potential_mods);
+                                    } else {
+                                        // Case-insensitive check for linux
+                                        let potential_mods_lower = full_path.join("mods");
+                                        if potential_mods_lower.exists()
+                                            && potential_mods_lower.is_dir()
+                                        {
+                                            mods_path = Some(potential_mods_lower);
+                                        }
+                                    }
+
                                     Game {
                                         name,
                                         path: full_path,
-                                        mods_path: None,
+                                        mods_path,
                                         mods: Vec::new(),
                                     }
                                 })
@@ -129,23 +184,26 @@ impl AppState {
                             if let Some(index) = self.active_game_index
                                 && let Some(game) = self.games.get_mut(index)
                             {
-                                {
-                                    game.mods_path = Some(path.clone());
-                                    let mod_names =
-                                        directory_manager::list_directory_contents(path);
-                                    game.mods = mod_names
-                                        .into_iter()
-                                        .filter(|name| path.join(name).is_dir())
-                                        .map(|name| {
-                                            let full_path = path.join(&name);
-                                            Mod {
-                                                name,
-                                                path: full_path,
-                                                enabled: false,
-                                                injection_method: InjectionStrategy::MergeFiles,
-                                            }
-                                        })
-                                        .collect()
+                                let mod_names = directory_manager::list_directory_contents(path);
+                                game.mods = mod_names
+                                    .into_iter()
+                                    .filter(|name| path.join(name).is_dir())
+                                    .map(|name| {
+                                        let full_path = path.join(&name);
+                                        Mod {
+                                            name: name.clone(),
+                                            path: full_path,
+                                            enabled: false,
+                                            injection_method: InjectionStrategy::AddAsFolder(
+                                                name.into(),
+                                            ),
+                                        }
+                                    })
+                                    .collect();
+
+                                if directory_manager::is_flatpak_game(&game.path) {
+                                    self.pending_permission_path = Some(path.clone());
+                                    self.show_permission_prompt = true;
                                 }
                             }
                             self.explorer = None;
@@ -168,31 +226,34 @@ impl AppState {
                 if let Some(game_index) = self.active_game_index
                     && let Some(mod_index) = self.mod_list_state.selected()
                 {
-                    let game = &mut self.games[game_index];
-                    let m = &mut game.mods[mod_index];
-                    m.enabled = !m.enabled;
-                    let is_enabled = m.enabled;
-                    let mod_name = m.name.clone();
+                    let (is_enabled, mod_name) = {
+                        let game = &mut self.games[game_index];
+                        let m = &mut game.mods[mod_index];
+                        m.enabled = !m.enabled;
+                        (m.enabled, m.name.clone())
+                    };
 
-                    if is_enabled {
-                        match symlink_manager::apply_mod(game, mod_index) {
-                            Ok(_) => {
-                                self.status_message =
-                                    Some(format!("Successfully applied mod: {}", mod_name))
-                            }
-                            Err(e) => {
-                                self.status_message = Some(format!("Error applying mod: {}", e))
-                            }
-                        }
+                    let game = &self.games[game_index];
+                    let result = if is_enabled {
+                        symlink_manager::apply_mod(game, mod_index)
                     } else {
-                        match symlink_manager::remove_mod(game, mod_index) {
-                            Ok(_) => {
-                                self.status_message =
-                                    Some(format!("Successfully removed mod: {}", mod_name))
-                            }
-                            Err(e) => {
-                                self.status_message = Some(format!("Error removing mod: {}", e))
-                            }
+                        symlink_manager::remove_mod(game, mod_index)
+                    };
+
+                    match result {
+                        Ok(_) => {
+                            self.status_message = Some(format!(
+                                "Successfully {} mod: {}",
+                                if is_enabled { "applied" } else { "removed" },
+                                mod_name
+                            ))
+                        }
+                        Err(e) => {
+                            self.status_message = Some(format!(
+                                "Error {} mod: {}",
+                                if is_enabled { "applying" } else { "removing" },
+                                e
+                            ))
                         }
                     }
                 }
