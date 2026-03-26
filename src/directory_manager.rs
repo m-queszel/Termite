@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 pub fn find_steam_root() -> Option<PathBuf> {
     let home = env::var("HOME").ok()?;
@@ -49,4 +50,22 @@ pub fn list_directory_contents(dir: &Path) -> Vec<String> {
             .collect(),
         Err(_) => vec!["<Could not read directory>".to_string()],
     }
+}
+
+pub fn grant_flatpak_permission(staging_path: &Path) -> std::io::Result<()> {
+    Command::new("flatpak")
+        .args([
+            "override",
+            "--user",
+            &format!("--filesystem={}", staging_path.display()),
+            "com.valvesoftware.Steam",
+        ])
+        .status()?;
+    Ok(())
+}
+
+pub fn is_flatpak_game(game_path: &Path) -> bool {
+    game_path
+        .to_string_lossy()
+        .contains(".var/app/com.valvesoftware.Steam")
 }
